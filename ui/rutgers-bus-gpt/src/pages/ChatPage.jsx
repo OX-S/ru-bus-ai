@@ -1,13 +1,16 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import Navigation from '../components/Navigation';
 import HeroBadge from '../components/HeroBadge';
 import ChatContainer from '../components/Chat/ChatContainer';
 
-function ChatPage({ navigate }) {
+function ChatPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen">
-      <Navigation navigate={navigate} showHomeButton={true} showFeedbackButton={false} showSupportButton={false} />
+      <Navigation showHomeButton={true} showFeedbackButton={false} showSupportButton={false} />
 
       {/* Chat Interface */}
       <main className="pt-24 pb-16 px-6 min-h-screen hero-bg">

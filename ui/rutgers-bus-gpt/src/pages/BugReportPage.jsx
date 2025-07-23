@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BugAntIcon, ChatBubbleLeftRightIcon, HeartIcon } from '@heroicons/react/24/outline';
 import Navigation from '../components/Navigation';
 import HeroBadge from '../components/HeroBadge';
 
-function BugReportPage({ navigate }) {
+function BugReportPage() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -18,7 +20,7 @@ function BugReportPage({ navigate }) {
 
   return (
     <div className="min-h-screen">
-      <Navigation navigate={navigate} showHomeButton={true} showFeedbackButton={false} showSupportButton={false} />
+      <Navigation showHomeButton={true} showFeedbackButton={false} showSupportButton={false} />
 
       {/* Bug Report Form */}
       <main className="pt-24 pb-16 px-6 min-h-screen hero-bg">

@@ -1,7 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChatBubbleLeftRightIcon, HeartIcon } from '@heroicons/react/24/outline';
 
-function CTASection({ navigate }) {
+function CTASection() {
+  const navigate = useNavigate();
   return (
     <section className="py-20 px-6 bg-gradient-to-br from-red-50 to-orange-50">
       <div className="max-w-4xl mx-auto text-center">

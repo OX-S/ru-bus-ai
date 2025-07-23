@@ -1,42 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { Routes, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import ChatPage from './pages/ChatPage';
 import BugReportPage from './pages/BugReportPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
-  const [currentRoute, setCurrentRoute] = useState('/');
-
-  const navigate = (path) => {
-    setCurrentRoute(path);
-    window.history.pushState({}, '', path);
-  };
-
-  // Handle browser back/forward buttons
-  React.useEffect(() => {
-    const handlePopState = () => {
-      setCurrentRoute(window.location.pathname);
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  const renderPage = () => {
-    switch (currentRoute) {
-      case '/':
-        return <HomePage navigate={navigate} />;
-      case '/chat':
-        return <ChatPage navigate={navigate} />;
-      case '/bug-reports':
-        return <BugReportPage navigate={navigate} />;
-      default:
-        return <NotFoundPage navigate={navigate} />;
-    }
-  };
-
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
-      {renderPage()}
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/bug-reports" element={<BugReportPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
     </div>
   );
 }

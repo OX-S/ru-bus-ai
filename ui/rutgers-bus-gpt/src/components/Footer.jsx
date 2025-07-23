@@ -1,7 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TruckIcon } from '@heroicons/react/24/outline';
 
-function Footer({ navigate }) {
+function Footer() {
+  const navigate = useNavigate();
   return (
     <footer className="bg-white border-t border-gray-100 px-6 py-12">
       <div className="max-w-7xl mx-auto">

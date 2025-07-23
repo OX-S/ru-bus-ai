@@ -1,7 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TruckIcon, BugAntIcon, HeartIcon, HomeIcon } from '@heroicons/react/24/outline';
 
-function Navigation({ navigate, showHomeButton = false, showFeedbackButton = true, showSupportButton = true }) {
+function Navigation({ showHomeButton = false, showFeedbackButton = true, showSupportButton = true }) {
+  const navigate = useNavigate();
   return (
     <nav className="nav-premium fixed w-full top-0 z-50 px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">

@@ -1,11 +1,14 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ExclamationTriangleIcon, HomeIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import Navigation from '../components/Navigation';
 
-function NotFoundPage({ navigate }) {
+function NotFoundPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen">
-      <Navigation navigate={navigate} showHomeButton={false} showFeedbackButton={false} showSupportButton={false} />
+      <Navigation showHomeButton={false} showFeedbackButton={false} showSupportButton={false} />
 
       {/* 404 Content */}
       <main className="pt-24 pb-16 px-6 min-h-screen hero-bg flex items-center justify-center">

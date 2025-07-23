@@ -1,9 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SparklesIcon, ChatBubbleLeftRightIcon, RocketLaunchIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
 import HeroBadge from './HeroBadge';
 import TrustIndicators from './TrustIndicators';
 
-function HeroSection({ navigate }) {
+function HeroSection() {
+  const navigate = useNavigate();
   return (
     <section className="hero-bg pt-24 pb-16 px-6">
       <div className="max-w-7xl mx-auto">
