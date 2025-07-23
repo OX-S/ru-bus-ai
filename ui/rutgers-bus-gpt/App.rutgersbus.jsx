@@ -1,29 +1,23 @@
 import React from 'react';
-import App from './src/App';
+import { BrowserRouter } from 'react-router-dom';
+import TestWidgetsPage from './src/pages/TestWidgetsPage';
+import ActiveRoutesWidget from './src/components/TestWidgets/ActiveRoutesWidget';
+import DirectionsWidget from './src/components/TestWidgets/DirectionsWidget';
+import WidgetRenderer from './src/components/TestWidgets/WidgetRenderer';
+import ConfigInputSection from './src/components/TestWidgets/ConfigInputSection';
+import ExampleConfigsSection from './src/components/TestWidgets/ExampleConfigsSection';
+import RouteItem from './src/components/TestWidgets/RouteItem';
+import DirectionStep from './src/components/TestWidgets/DirectionStep';
+import ExampleConfigCard from './src/components/TestWidgets/ExampleConfigCard';
 
-// Import all chat components for preview
-import ChatContainer from './src/components/Chat/ChatContainer';
-import ChatMessage from './src/components/Chat/ChatMessage';
-import ChatInput from './src/components/Chat/ChatInput';
-import LoadingSpinner from './src/components/Chat/LoadingSpinner';
-import ErrorBubble from './src/components/Chat/ErrorBubble';
-
-function RutgersBusApp() {
+function App() {
   return (
-    <div>
-      {/* Main App */}
-      <App />
-      
-      {/* Hidden components for preview system */}
-      <div style={{ display: 'none' }}>
-        <ChatContainer />
-        <ChatMessage message="Test message" isUser={true} timestamp={new Date().toISOString()} />
-        <ChatInput onSendMessage={() => {}} />
-        <LoadingSpinner />
-        <ErrorBubble />
+    <BrowserRouter>
+      <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+        <TestWidgetsPage />
       </div>
-    </div>
+    </BrowserRouter>
   );
 }
 
-export default RutgersBusApp;
+export default App;

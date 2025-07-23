@@ -7,7 +7,6 @@ import ChatContainer from '../components/Chat/ChatContainer';
 
 function ChatPage() {
   const navigate = useNavigate();
-
   return (
     <div className="min-h-screen">
       <Navigation showHomeButton={true} showFeedbackButton={false} showSupportButton={false} />
