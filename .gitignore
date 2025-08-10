@@ -1,6 +1,7 @@
-/data/google_transit.zip
+/data/
 .idea
 /gtfs.duckdb
 /routes.faiss
 /routes_meta.json
 /data
+/.env
