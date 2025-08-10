@@ -1,29 +1,24 @@
-"""
-Central place to set up SQLAlchemy for an on‑disk DuckDB database.
-
-• Uses the official `duckdb_engine` dialect  →  URI:  duckdb:///path/to/file.duckdb
-• One shared connection is enough, so we wire SQLAlchemy to a StaticPool.
-"""
-import duckdb, duckdb_engine
+from __future__ import annotations
 from contextlib import contextmanager
 from typing import Generator
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool
 
-from src.app.core.config import settings  # expects settings.DUCKDB_PATH & settings.SQL_ECHO
+from src.app.core.config import settings
 
-
-DATABASE_URL = f"duckdb:///{settings.DUCKDB_PATH}"
 
 engine = create_engine(
-    DATABASE_URL,
+    settings.DATABASE_URL,
     echo=settings.SQL_ECHO,
+    poolclass=QueuePool,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    connect_args={"connect_timeout": settings.DB_CONNECT_TIMEOUT},
     future=True,
-    poolclass=StaticPool,
 )
-
 
 SessionLocal: sessionmaker[Session] = sessionmaker(
     bind=engine,
@@ -35,21 +30,21 @@ SessionLocal: sessionmaker[Session] = sessionmaker(
 
 @contextmanager
 def get_session() -> Generator[Session, None, None]:
-    """
-    Dependency for FastAPI endpoints or background tasks:
-
-        with get_session() as db:
-            ...
-
-    """
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 def ping() -> None:
-    """Raise if the file is gone or unreadable; return silently otherwise."""
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
+        conn.execute(
+            text("SELECT to_regnamespace(:nsp) IS NOT NULL"),
+            {"nsp": settings.GTFS_SCHEMA},
+        )
