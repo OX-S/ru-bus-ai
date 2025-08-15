@@ -72,9 +72,16 @@ def _alter_to_date_yyyymmdd(cur: psycopg.Cursor, table: str, col: str):
 
 def rebuild_postgres_from_dir(txt_dir: Path):
     dsn = settings.dsn()
+
+    if dsn.startswith("postgresql+"):
+        dsn = "postgresql://" + dsn.split("://", 1)[1]
+
     schema = settings.gtfs_schema
 
-    with psycopg.connect(dsn, autocommit=True) as con:
+    with psycopg.connect(
+            dbname="ru_gtfs", user="appuser", password="1234", host="localhost", port=5432,
+            autocommit=True
+    ) as con:
         with con.cursor() as cur:
             cur.execute("SELECT current_database(), current_user")
             db, usr = cur.fetchone()

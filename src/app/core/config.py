@@ -2,32 +2,40 @@
 from __future__ import annotations
 from functools import lru_cache
 from typing import List
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    APP_NAME: str = Field("Bus LLM Backend", env="APP_NAME")
-    APP_VERSION: str = Field("0.1.0", env="APP_VERSION")
-    API_PREFIX: str = Field("/v1", env="API_PREFIX")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
 
-    DATABASE_URL: str = Field(..., env="DATABASE_URL")
-    SQL_ECHO: bool = Field(False, env="SQL_ECHO")
-    DB_CONNECT_TIMEOUT: int = Field(5, env="DB_CONNECT_TIMEOUT")
-    GTFS_SCHEMA: str = Field("gtfs", env="GTFS_SCHEMA")
+    env: str = "dev"
+    app_name: str = "Bus LLM Backend"
+    app_version: str = "0.1.0"
 
-    CORS_ALLOW_ORIGINS: str = Field("*", env="CORS_ALLOW_ORIGINS")
+    api_prefix: str = "/api"
+    api_version: str = "v1"
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "extra": "ignore",
-    }
+    database_url: str
+    sql_echo: bool = False
+    db_connect_timeout: int = 5
+    gtfs_schema: str = "gtfs"
+
+    cors_allow_origins: str = "*"
+
+    redis_url: str = "redis://localhost:6379/0"
+    redis_key_prefix: str = "gtfsrt"
+
+    vehicle_positions_staleness_s: int = 60
+    trip_updates_staleness_s: int = 90
 
     @property
-    def cors_origins(self) -> List[str]:
-        if self.CORS_ALLOW_ORIGINS.strip() == "*":
-            return ["*"]
-        return [o.strip() for o in self.CORS_ALLOW_ORIGINS.split(",") if o.strip()]
+    def allow_origins_list(self) -> List[str]:
+        s = (self.cors_allow_origins or "").strip()
+        return ["*"] if s == "*" else [o.strip() for o in s.split(",") if o.strip()]
 
 @lru_cache
 def _cached_settings() -> Settings:
