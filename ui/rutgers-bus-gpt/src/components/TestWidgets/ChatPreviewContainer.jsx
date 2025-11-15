@@ -4,9 +4,9 @@ import ChatInput from '../Chat/ChatInput';
 import LoadingSpinner from '../Chat/LoadingSpinner';
 import ErrorBubble from '../Chat/ErrorBubble';
 import { WidgetType } from '../../utils/enums';
-import ActiveRoutesWidget from './ActiveRoutesWidget';
+import ActiveRoutesWidget from './ActiveRoutes/ActiveRoutesWidget.jsx';
 import DirectionsWidget from './DirectionsWidget';
-import BusArrivalsWidget from './BusArrivalsWidget';
+import BusArrivalsWidget from './BusArrivals/BusArrivalsWidget.jsx';
 
 function ChatPreviewContainer({ config, renderError }) {
   const [messages, setMessages] = useState([
@@ -61,7 +61,10 @@ function ChatPreviewContainer({ config, renderError }) {
       case WidgetType.DIRECTIONS:
         return `How do I get from ${config.from} to ${config.to}?`;
       case WidgetType.BUS_ARRIVALS:
-        return `When are the next buses arriving at ${config.stopName}?`;
+        if (config.stopIds && config.stopIds.length > 1) {
+          return `When are the next buses arriving at these stops?`;
+        }
+        return `When are the next buses arriving at this stop?`;
       default:
         return "Show me this widget";
     }
@@ -125,8 +128,7 @@ function ChatPreviewContainer({ config, renderError }) {
                 {msg.config.type === WidgetType.BUS_ARRIVALS && (
                   <div className="p-3">
                     <BusArrivalsWidget
-                      stopName={msg.config.stopName}
-                      arrivals={msg.config.arrivals}
+                      stopIds={msg.config.stopIds}
                     />
                   </div>
                 )}

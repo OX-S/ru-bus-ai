@@ -1,5 +1,16 @@
 // String formatting functions for widgets
 export const formatRouteColor = (color) => {
+  // If color is already a hex code, return it
+  if (color && color.startsWith('#')) {
+    return color;
+  }
+
+  // Handle hex strings without the leading hash
+  if (typeof color === 'string' && /^[0-9a-fA-F]{6}$/.test(color.trim())) {
+    return `#${color.trim()}`;
+  }
+  
+  // Fallback color mapping for named colors
   const colorMap = {
     red: '#dc2626',
     blue: '#2563eb',

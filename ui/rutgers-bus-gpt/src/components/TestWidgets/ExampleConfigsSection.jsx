@@ -17,7 +17,7 @@ function ExampleConfigsSection({ onConfigSelect }) {
       case 'directions':
         return 'Directions Widget';
       case 'bus_arrivals':
-        return 'Bus Arrivals Widget';
+        return 'Bus Arrivals Widget (Live API)';
       default:
         return 'Unknown Widget';
     }

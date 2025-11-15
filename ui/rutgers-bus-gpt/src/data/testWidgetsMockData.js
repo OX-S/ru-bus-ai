@@ -8,43 +8,6 @@ export const mockExampleConfigs = [
   },
   {
     type: "active_routes",
-    routes: [
-      {
-        id: "route-a",
-        name: "Route A",
-        color: "red",
-        stops: [
-          "College Ave Student Center",
-          "Scott Hall",
-          "Academic Building",
-          "Livingston Student Center",
-          "Livingston Plaza"
-        ]
-      },
-      {
-        id: "route-b",
-        name: "Route B",
-        color: "blue",
-        stops: [
-          "Busch Student Center",
-          "Hill Center",
-          "Library of Science",
-          "Stadium",
-          "Werblin Recreation Center"
-        ]
-      },
-      {
-        id: "route-h",
-        name: "Route H",
-        color: "green",
-        stops: [
-          "College Ave Student Center",
-          "George Street",
-          "Robert Wood Johnson Hospital",
-          "Medical School"
-        ]
-      }
-    ]
   },
   {
     type: "directions",
@@ -79,38 +42,11 @@ export const mockExampleConfigs = [
   },
   {
     type: "bus_arrivals",
-    stopName: "College Ave Student Center",
-    arrivals: [
-      {
-        route: "Route A",
-        color: "red",
-        destination: "Livingston Plaza",
-        arrivalMinutes: 0
-      },
-      {
-        route: "Route H",
-        color: "green",
-        destination: "Medical School",
-        arrivalMinutes: 3
-      },
-      {
-        route: "Route B",
-        color: "blue",
-        destination: "Busch Campus",
-        arrivalMinutes: 8
-      },
-      {
-        route: "Route A",
-        color: "red",
-        destination: "Livingston Plaza",
-        arrivalMinutes: 12
-      }
-    ]
+    stopIds: ["27767"]
   },
   {
     type: "bus_arrivals",
-    stopName: "Library of Science",
-    arrivals: []
+    stopIds: ["27767", "27768"]
   }
 ];
 

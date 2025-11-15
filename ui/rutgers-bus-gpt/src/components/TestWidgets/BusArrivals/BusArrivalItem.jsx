@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatRouteColor, formatArrivalTime, getArrivalStatus } from '../../utils/stringFormatters';
+import { formatRouteColor, formatArrivalTime, getArrivalStatus } from '../../../utils/stringFormatters.js';
 
 function BusArrivalItem({ arrival }) {
   const getStatusColor = (status) => {
