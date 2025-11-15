@@ -12,16 +12,33 @@ from sqlalchemy import text
 
 from src.app.core.config import settings
 from src.app.db.session import get_session
+from src.app.schemas.transit import (
+    ActiveRoute,
+    ArrivalItem,
+    AlertsResponse,
+    Vehicle,
+    WidgetArrival,
+    WidgetStop,
+)
 from src.app.utils.json import jload
 
 JSONDict = Dict[str, Any]
 DEFAULT_ROUTE_COLOR = "#666666"
+ARRIVAL_LOOKBACK_SECONDS = 3600
 _STALE_TTL_FRACTION = 4
 
 
 # ---------------------------------------------------------------------------
 # Helpers: general utilities
 # ---------------------------------------------------------------------------
+
+def _now_seconds() -> int:
+    return int(time.time())
+
+
+def _arrival_window(now_sec: int, horizon_sec: int) -> Tuple[int, int]:
+    return now_sec - ARRIVAL_LOOKBACK_SECONDS, now_sec + horizon_sec
+
 
 async def _is_feed_stale(client: redis.Redis, raw_key: str, threshold_sec: int) -> bool:
     """Return True when the cached GTFS feed should be considered stale."""
@@ -38,6 +55,15 @@ def _coerce_int(value: Any) -> int | None:
     try:
         return int(float(value))
     except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _coerce_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
         return None
 
 
@@ -72,6 +98,17 @@ def _coerce_unix_ts(value: Any) -> int | None:
         except (TypeError, ValueError):
             return None
     return None
+
+
+def _ensure_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    return str(value)
 
 
 def _extract_arrival_epoch(doc: JSONDict) -> int | None:
@@ -157,6 +194,91 @@ def _decode_json_bytes(payload: bytes | None) -> JSONDict | None:
     except Exception:
         return None
     return data if isinstance(data, dict) else None
+
+
+def _sanitize_color(raw_color: Optional[str]) -> str:
+    if not raw_color:
+        return DEFAULT_ROUTE_COLOR
+    color = raw_color.strip()
+    if not color:
+        return DEFAULT_ROUTE_COLOR
+    return color if color.startswith("#") else f"#{color}"
+
+
+def _trip_ids_from_docs(documents: List[JSONDict]) -> Set[str]:
+    trip_ids: Set[str] = set()
+    for doc in documents:
+        trip_id = _ensure_str(doc.get("trip_id"))
+        if trip_id:
+            trip_ids.add(trip_id)
+    return trip_ids
+
+
+def _deserialize_rows(
+    rows: List[Tuple[bytes, Any]],
+    now_sec: int,
+    limit: int,
+) -> List[JSONDict]:
+    documents: List[JSONDict] = []
+    for payload, score in rows:
+        doc = _deserialize_arrival(payload, score, now_sec)
+        if doc:
+            documents.append(doc)
+    documents.sort(key=lambda item: item.get("eta_seconds", float("inf")))
+    return documents[:limit]
+
+
+def _build_arrival_item(doc: JSONDict, route_id: str) -> ArrivalItem:
+    payload = {
+        "trip_id": _ensure_str(doc.get("trip_id")),
+        "route_id": route_id,
+        "stop_sequence": _coerce_int(doc.get("stop_sequence")),
+        "arrival": _coerce_int(doc.get("arrival")),
+        "departure": _coerce_int(doc.get("departure")),
+        "delay_s": _coerce_int(doc.get("delay_s") or doc.get("delay")),
+        "eta_seconds": _coerce_int(doc.get("eta_seconds")),
+    }
+    return ArrivalItem(**payload)
+
+
+def _build_vehicle(doc: JSONDict, route_id: Optional[str]) -> Vehicle | None:
+    vehicle_id = _ensure_str(doc.get("vehicle_id"))
+    if not vehicle_id:
+        return None
+    payload = {
+        "vehicle_id": vehicle_id,
+        "trip_id": _ensure_str(doc.get("trip_id")),
+        "route_id": route_id or _ensure_str(doc.get("route_id")),
+        "lat": _coerce_float(doc.get("lat")),
+        "lon": _coerce_float(doc.get("lon")),
+        "speed": _coerce_float(doc.get("speed")),
+        "bearing": _coerce_float(doc.get("bearing")),
+        "label": _ensure_str(doc.get("label")),
+        "updated_at": _coerce_int(doc.get("updated_at")),
+        "ingested_at_ms": _coerce_int(doc.get("ingested_at_ms")),
+    }
+    return Vehicle(**payload)
+
+
+def _route_id_for_doc(doc: JSONDict, trip_map: Dict[str, str]) -> Optional[str]:
+    trip_id = _ensure_str(doc.get("trip_id"))
+    if not trip_id:
+        return None
+    return trip_map.get(trip_id)
+
+
+def _default_route_meta(route_id: str) -> Dict[str, str]:
+    return {"route_long_name": route_id, "route_color": DEFAULT_ROUTE_COLOR}
+
+
+def _build_widget_arrival(doc: JSONDict, route_meta: Dict[str, str]) -> WidgetArrival:
+    eta_seconds = _coerce_int(doc.get("eta_seconds")) or 0
+    return WidgetArrival(
+        eta_seconds=eta_seconds,
+        route_long_name=route_meta.get("route_long_name", ""),
+        route_color=route_meta.get("route_color", DEFAULT_ROUTE_COLOR),
+        to="TBD",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +407,82 @@ async def _fetch_representative_trip_stop_names(
         return []
 
 
+async def _load_arrival_documents(
+    r: redis.Redis,
+    stop_ids: List[str],
+    horizon_sec: int,
+    per_stop_limit: int,
+) -> Tuple[Dict[str, List[JSONDict]], int]:
+    now_sec = _now_seconds()
+    min_ts, max_ts = _arrival_window(now_sec, horizon_sec)
+    prefix = settings.redis_key_prefix
+
+    pipeline = r.pipeline()
+    for stop_id in stop_ids:
+        pipeline.zrangebyscore(
+            f"{prefix}:stop:{stop_id}:arrivals",
+            min_ts,
+            max_ts,
+            start=0,
+            num=per_stop_limit,
+            withscores=True,
+        )
+
+    results = await pipeline.execute()
+    per_stop: Dict[str, List[JSONDict]] = {}
+    for stop_id, rows in zip(stop_ids, results):
+        per_stop[stop_id] = _deserialize_rows(rows or [], now_sec, per_stop_limit)
+
+    return per_stop, now_sec
+
+
+async def _trip_route_map_for_groups(groups: Dict[str, List[JSONDict]]) -> Dict[str, str]:
+    trip_ids: Set[str] = set()
+    for docs in groups.values():
+        trip_ids.update(_trip_ids_from_docs(docs))
+    if not trip_ids:
+        return {}
+    return await _fetch_trip_route_map(trip_ids)
+
+
+async def _load_vehicle_documents(r: redis.Redis) -> List[JSONDict]:
+    prefix = settings.redis_key_prefix
+    vehicle_ids = await r.smembers(f"{prefix}:vehicles:all")
+
+    if not vehicle_ids:
+        return []
+
+    pipeline = r.pipeline()
+    for raw_id in vehicle_ids:
+        vehicle_id = _ensure_str(raw_id)
+        if not vehicle_id:
+            continue
+        pipeline.get(f"{prefix}:vehicle:{vehicle_id}")
+
+    payloads = await pipeline.execute()
+    documents: List[JSONDict] = []
+    for payload in payloads:
+        doc = _decode_json_bytes(payload)
+        if doc:
+            documents.append(doc)
+
+    return documents
+
+
+async def _build_route_stops_map(route_ids: Set[str]) -> Dict[str, List[str]]:
+    tasks = {
+        route_id: asyncio.create_task(_fetch_representative_trip_stop_names(route_id))
+        for route_id in route_ids
+    }
+    stops_map: Dict[str, List[str]] = {}
+    for route_id, task in tasks.items():
+        try:
+            stops_map[route_id] = await task
+        except Exception:
+            stops_map[route_id] = []
+    return stops_map
+
+
 # ---------------------------------------------------------------------------
 # Public service functions
 # ---------------------------------------------------------------------------
@@ -305,46 +503,20 @@ async def get_stop_arrivals(
     stop_id: str,
     limit: int,
     horizon_sec: int,
-) -> Tuple[List[JSONDict], bool]:
+) -> Tuple[List[ArrivalItem], bool]:
     """Return arrivals for a single stop along with staleness info."""
-    now_sec = int(time.time())
-    prefix = settings.redis_key_prefix
-    key = f"{prefix}:stop:{stop_id}:arrivals"
-    min_timestamp = now_sec - 3600
-    max_timestamp = now_sec + horizon_sec
+    per_stop_docs, _ = await _load_arrival_documents(r, [stop_id], horizon_sec, limit)
+    docs = per_stop_docs.get(stop_id, [])
+    trip_map = await _trip_route_map_for_groups({stop_id: docs})
 
-    raw_entries = await r.zrangebyscore(
-        key,
-        min_timestamp,
-        max_timestamp,
-        start=0,
-        num=limit,
-        withscores=True,
-    )
-
-    documents: List[JSONDict] = []
-    trip_ids: Set[str] = set()
-    for payload, score in raw_entries:
-        doc = _deserialize_arrival(payload, score, now_sec)
-        if not doc:
-            continue
-        trip_id = doc.get("trip_id")
-        if trip_id:
-            trip_ids.add(str(trip_id))
-        documents.append(doc)
-
-    trip_map = await _fetch_trip_route_map(trip_ids)
-    arrivals: List[JSONDict] = []
-    for doc in documents:
-        trip_id = doc.get("trip_id")
-        if not trip_id:
-            continue
-        route_id = trip_map.get(str(trip_id))
+    arrivals: List[ArrivalItem] = []
+    for doc in docs:
+        route_id = _route_id_for_doc(doc, trip_map)
         if not route_id:
             continue
-        doc["route_id"] = route_id
-        arrivals.append(doc)
+        arrivals.append(_build_arrival_item(doc, route_id))
 
+    prefix = settings.redis_key_prefix
     stale = await _is_feed_stale(
         r,
         f"{prefix}:trip_updates:raw",
@@ -353,41 +525,24 @@ async def get_stop_arrivals(
     return arrivals, stale
 
 
-async def get_route_vehicles(r: redis.Redis, route_id: str) -> Tuple[List[JSONDict], bool]:
+async def get_route_vehicles(
+    r: redis.Redis,
+    route_id: str,
+) -> Tuple[List[Vehicle], bool]:
     """Return vehicles for a given route along with staleness info."""
-    prefix = settings.redis_key_prefix
-    all_set_key = f"{prefix}:vehicles:all"
-    ids = await r.smembers(all_set_key)
+    vehicles_raw = await _load_vehicle_documents(r)
+    trip_map = await _fetch_trip_route_map(_trip_ids_from_docs(vehicles_raw))
 
-    vehicles_raw: List[JSONDict] = []
-    trip_ids: Set[str] = set()
-
-    if ids:
-        pipeline = r.pipeline()
-        for vid in ids:
-            vehicle_id = vid.decode("utf-8") if isinstance(vid, (bytes, bytearray)) else vid
-            pipeline.get(f"{prefix}:vehicle:{vehicle_id}")
-        responses = await pipeline.execute()
-        for payload in responses:
-            doc = _decode_json_bytes(payload)
-            if not doc:
-                continue
-            vehicles_raw.append(doc)
-            trip_id = doc.get("trip_id")
-            if trip_id:
-                trip_ids.add(str(trip_id))
-
-    trip_map = await _fetch_trip_route_map(trip_ids)
-    vehicles: List[JSONDict] = []
-    for vehicle in vehicles_raw:
-        trip_id = vehicle.get("trip_id")
-        if not trip_id:
+    vehicles: List[Vehicle] = []
+    for doc in vehicles_raw:
+        mapped_route_id = _route_id_for_doc(doc, trip_map)
+        if mapped_route_id != route_id:
             continue
-        mapped_route_id = trip_map.get(str(trip_id))
-        if mapped_route_id == route_id:
-            vehicle["route_id"] = mapped_route_id
+        vehicle = _build_vehicle(doc, mapped_route_id)
+        if vehicle:
             vehicles.append(vehicle)
 
+    prefix = settings.redis_key_prefix
     stale = await _is_feed_stale(
         r,
         f"{prefix}:vehicle_positions:raw",
@@ -396,7 +551,7 @@ async def get_route_vehicles(r: redis.Redis, route_id: str) -> Tuple[List[JSONDi
     return vehicles, stale
 
 
-async def get_vehicle(r: redis.Redis, vehicle_id: str) -> JSONDict | None:
+async def get_vehicle(r: redis.Redis, vehicle_id: str) -> Vehicle | None:
     """Return a single vehicle enriched with its route, if available."""
     prefix = settings.redis_key_prefix
     payload = await r.get(f"{prefix}:vehicle:{vehicle_id}")
@@ -404,88 +559,62 @@ async def get_vehicle(r: redis.Redis, vehicle_id: str) -> JSONDict | None:
     if not doc:
         return None
 
-    trip_id = doc.get("trip_id")
+    trip_id = _ensure_str(doc.get("trip_id"))
+    route_id: Optional[str] = None
     if trip_id:
-        trip_map = await _fetch_trip_route_map({str(trip_id)})
-        route_id = trip_map.get(str(trip_id))
-        if route_id:
-            doc["route_id"] = route_id
-    return doc
+        trip_map = await _fetch_trip_route_map({trip_id})
+        route_id = trip_map.get(trip_id)
+
+    return _build_vehicle(doc, route_id)
 
 
-async def get_alerts(r: redis.Redis) -> JSONDict:
+async def get_alerts(r: redis.Redis) -> AlertsResponse:
     """Return cached system alerts or an empty placeholder response."""
     prefix = settings.redis_key_prefix
     payload = await r.get(f"{prefix}:alerts")
     doc = _decode_json_bytes(payload)
     if doc is None:
-        return {"as_of": int(time.time()), "alerts": []}
-    return doc
+        return AlertsResponse(as_of=_now_seconds(), alerts=[])
+
+    as_of = _coerce_int(doc.get("as_of")) or _now_seconds()
+    alerts = doc.get("alerts")
+    alerts_list = alerts if isinstance(alerts, list) else []
+    return AlertsResponse(as_of=as_of, alerts=alerts_list)
 
 
-async def get_active_routes(r: redis.Redis) -> List[JSONDict]:
+async def get_active_routes(r: redis.Redis) -> List[ActiveRoute]:
     """Return metadata for routes that currently have active vehicles."""
-    prefix = settings.redis_key_prefix
-    all_set_key = f"{prefix}:vehicles:all"
-    vehicle_ids = await r.smembers(all_set_key)
-
-    trip_ids: Set[str] = set()
-    vehicle_trip_ids: List[str] = []
-
-    if vehicle_ids:
-        pipeline = r.pipeline()
-        for raw_id in vehicle_ids:
-            vehicle_id = raw_id.decode("utf-8") if isinstance(raw_id, (bytes, bytearray)) else str(raw_id)
-            pipeline.get(f"{prefix}:vehicle:{vehicle_id}")
-
-        payloads = await pipeline.execute()
-        for payload in payloads:
-            doc = _decode_json_bytes(payload)
-            if not doc:
-                continue
-            trip_id = doc.get("trip_id")
-            if not trip_id:
-                continue
-            trip_str = str(trip_id)
-            trip_ids.add(trip_str)
-            vehicle_trip_ids.append(trip_str)
-
-    if not trip_ids:
+    vehicles_raw = await _load_vehicle_documents(r)
+    if not vehicles_raw:
         return []
 
-    trip_map = await _fetch_trip_route_map(trip_ids)
+    trip_map = await _fetch_trip_route_map(_trip_ids_from_docs(vehicles_raw))
     route_counts: Counter[str] = Counter()
-    for trip_id in vehicle_trip_ids:
-        route_id = trip_map.get(trip_id)
+    for doc in vehicles_raw:
+        route_id = _route_id_for_doc(doc, trip_map)
         if route_id:
             route_counts[route_id] += 1
 
-    active_route_ids = set(route_counts.keys())
-    if not active_route_ids:
+    if not route_counts:
         return []
 
-    routes_meta = await _fetch_routes_metadata(active_route_ids)
+    active_route_ids = set(route_counts.keys())
+    routes_meta, stops_map = await asyncio.gather(
+        _fetch_routes_metadata(active_route_ids),
+        _build_route_stops_map(active_route_ids),
+    )
 
-    stops_map: Dict[str, List[str]] = {}
-    for route_id in active_route_ids:
-        stops_map[route_id] = await _fetch_representative_trip_stop_names(route_id)
-
-    routes: List[JSONDict] = []
+    routes: List[ActiveRoute] = []
     for route_id in sorted(active_route_ids):
-        meta = routes_meta.get(route_id) or {
-            "route_long_name": route_id,
-            "route_color": DEFAULT_ROUTE_COLOR,
-        }
-        raw_color = meta.get("route_color") or DEFAULT_ROUTE_COLOR
-        color = raw_color.lstrip("#") or DEFAULT_ROUTE_COLOR.lstrip("#")
+        meta = routes_meta.get(route_id) or _default_route_meta(route_id)
         routes.append(
-            {
-                "id": route_id,
-                "name": meta.get("route_long_name") or route_id,
-                "color": color,
-                "stops": stops_map.get(route_id, []),
-                "active_vehicle_count": int(route_counts[route_id]),
-            }
+            ActiveRoute(
+                id=route_id,
+                name=meta.get("route_long_name") or route_id,
+                color=_sanitize_color(meta.get("route_color")),
+                stops=stops_map.get(route_id, []),
+                active_vehicle_count=int(route_counts[route_id]),
+            )
         )
 
     return routes
@@ -496,83 +625,38 @@ async def get_arrivals_widget(
     stop_ids: List[str],
     horizon_sec: int = 45 * 60,
     per_stop_limit: int = 30,
-) -> Dict[str, JSONDict]:
+) -> List[WidgetStop]:
     """Return widget-ready arrivals for multiple stops."""
-    now_sec = int(time.time())
-    prefix = settings.redis_key_prefix
-    min_timestamp = now_sec - 3600
-    max_timestamp = now_sec + horizon_sec
+    per_stop_docs, _ = await _load_arrival_documents(r, stop_ids, horizon_sec, per_stop_limit)
+    trip_map = await _trip_route_map_for_groups(per_stop_docs)
 
-    trips_to_map: Set[str] = set()
-    per_stop_docs: Dict[str, List[JSONDict]] = {}
-
-    pipeline = r.pipeline()
-    for stop_id in stop_ids:
-        pipeline.zrangebyscore(
-            f"{prefix}:stop:{stop_id}:arrivals",
-            min_timestamp,
-            max_timestamp,
-            start=0,
-            num=per_stop_limit,
-            withscores=True,
-        )
-    results = await pipeline.execute()
-
-    for stop_id, rows in zip(stop_ids, results):
-        docs: List[JSONDict] = []
-        for payload, score in rows:
-            doc = _deserialize_arrival(payload, score, now_sec)
-            if not doc:
-                continue
-            trip_id = doc.get("trip_id")
-            if not trip_id:
-                continue
-            trips_to_map.add(str(trip_id))
-            docs.append(doc)
-
-        docs.sort(key=lambda item: item.get("eta_seconds", float("inf")))
-        per_stop_docs[stop_id] = docs[:per_stop_limit]
-
-    trip_map = await _fetch_trip_route_map(trips_to_map)
-
-    needed_route_ids: Set[str] = set()
+    route_ids: Set[str] = set()
     for docs in per_stop_docs.values():
         for doc in docs:
-            mapped_route = trip_map.get(str(doc.get("trip_id", "")))
+            mapped_route = _route_id_for_doc(doc, trip_map)
             if mapped_route:
-                needed_route_ids.add(mapped_route)
+                route_ids.add(mapped_route)
 
-    routes_meta_task = asyncio.create_task(_fetch_routes_metadata(needed_route_ids))
+    routes_meta_task = asyncio.create_task(_fetch_routes_metadata(route_ids))
     stop_names_task = asyncio.create_task(_fetch_stop_names(set(stop_ids)))
     routes_meta, stop_names = await asyncio.gather(routes_meta_task, stop_names_task)
 
-    widget_payload: Dict[str, JSONDict] = {}
+    stops: List[WidgetStop] = []
     for stop_id in stop_ids:
-        arrivals_out: List[JSONDict] = []
+        arrivals: List[WidgetArrival] = []
         for doc in per_stop_docs.get(stop_id, []):
-            trip_id = doc.get("trip_id")
-            if not trip_id:
-                continue
-            route_id = trip_map.get(str(trip_id))
+            route_id = _route_id_for_doc(doc, trip_map)
             if not route_id:
                 continue
-            route_meta = routes_meta.get(route_id) or {
-                "route_long_name": "",
-                "route_color": DEFAULT_ROUTE_COLOR,
-            }
-            arrivals_out.append(
-                {
-                    "eta_seconds": int(doc.get("eta_seconds") or 0),
-                    "route_long_name": route_meta["route_long_name"],
-                    "route_color": route_meta["route_color"],
-                    "to": "TBD",
-                }
+            route_meta = routes_meta.get(route_id) or _default_route_meta(route_id)
+            arrivals.append(_build_widget_arrival(doc, route_meta))
+
+        stops.append(
+            WidgetStop(
+                stop_id=stop_id,
+                stop_name=stop_names.get(stop_id, ""),
+                arrivals=arrivals,
             )
+        )
 
-        widget_payload[stop_id] = {
-            "stop_id": stop_id,
-            "stop_name": stop_names.get(stop_id, ""),
-            "arrivals": arrivals_out,
-        }
-
-    return widget_payload
+    return stops

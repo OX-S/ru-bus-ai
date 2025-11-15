@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 
 from src.app.core.config import settings
 from src.app.db.session import psql_ping
+from src.app.schemas.transit import (
+    ActiveRoutesResponse,
+    ArrivalsWidgetResponse,
+    WidgetStop,
+)
 from src.app.services import transit_cache
 
 router = APIRouter(prefix="/widgets", tags=["widgets"])
@@ -18,32 +23,6 @@ class ArrivalsWidgetRequest(BaseModel):
     stop_ids: List[str] = Field(..., min_items=1)
     horizon_sec: int = Field(45*60, ge=300, le=12*3600)
     per_stop_limit: int = Field(30, ge=1, le=100)
-
-class ArrivalItem(BaseModel):
-    eta_seconds: int | None
-    route_long_name: str
-    route_color: str
-    to: str
-
-class ArrivalsWidgetStop(BaseModel):
-    stop_id: str
-    stop_name: str
-    arrivals: List[ArrivalItem]
-
-class ArrivalsWidgetResponse(BaseModel):
-    as_of: int
-    stops: List[ArrivalsWidgetStop]
-
-class ActiveRouteItem(BaseModel):
-    id: str
-    name: str
-    color: str
-    stops: List[str]
-    active_vehicle_count: int
-
-class ActiveRoutesResponse(BaseModel):
-    as_of: int
-    routes: List[ActiveRouteItem]
 
 # ---------- redis dependency ----------
 async def get_redis(request: Request) -> redis.Redis:
@@ -63,13 +42,13 @@ async def arrivals_widget(req: ArrivalsWidgetRequest, r: redis.Redis = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database unavailable: {e}")
 
-    data = await transit_cache.get_arrivals_widget(
+    stops: List[WidgetStop] = await transit_cache.get_arrivals_widget(
         r,
         stop_ids=req.stop_ids,
         horizon_sec=req.horizon_sec,
         per_stop_limit=req.per_stop_limit,
     )
-    return {"as_of": int(time.time() * 1000), "stops": list(data.values())}
+    return ArrivalsWidgetResponse(as_of=int(time.time() * 1000), stops=stops)
 
 @router.get("/active-routes", response_model=ActiveRoutesResponse)
 async def active_routes_widget(r: redis.Redis = Depends(get_redis)):
@@ -79,4 +58,4 @@ async def active_routes_widget(r: redis.Redis = Depends(get_redis)):
         raise HTTPException(status_code=500, detail=f"Database unavailable: {e}")
 
     routes = await transit_cache.get_active_routes(r)
-    return {"as_of": int(time.time() * 1000), "routes": routes}
+    return ActiveRoutesResponse(as_of=int(time.time() * 1000), routes=routes)
