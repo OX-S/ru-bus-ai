@@ -34,6 +34,17 @@ class ArrivalsWidgetResponse(BaseModel):
     as_of: int
     stops: List[ArrivalsWidgetStop]
 
+class ActiveRouteItem(BaseModel):
+    id: str
+    name: str
+    color: str
+    stops: List[str]
+    active_vehicle_count: int
+
+class ActiveRoutesResponse(BaseModel):
+    as_of: int
+    routes: List[ActiveRouteItem]
+
 # ---------- redis dependency ----------
 async def get_redis(request: Request) -> redis.Redis:
     # Reuse app-level redis if available
@@ -48,7 +59,7 @@ async def get_redis(request: Request) -> redis.Redis:
 @router.post("/arrivals", response_model=ArrivalsWidgetResponse)
 async def arrivals_widget(req: ArrivalsWidgetRequest, r: redis.Redis = Depends(get_redis)):
     try:
-        psql_ping()  # quick DB sanity
+        psql_ping()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database unavailable: {e}")
 
@@ -59,3 +70,13 @@ async def arrivals_widget(req: ArrivalsWidgetRequest, r: redis.Redis = Depends(g
         per_stop_limit=req.per_stop_limit,
     )
     return {"as_of": int(time.time() * 1000), "stops": list(data.values())}
+
+@router.get("/active-routes", response_model=ActiveRoutesResponse)
+async def active_routes_widget(r: redis.Redis = Depends(get_redis)):
+    try:
+        psql_ping()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database unavailable: {e}")
+
+    routes = await transit_cache.get_active_routes(r)
+    return {"as_of": int(time.time() * 1000), "routes": routes}
