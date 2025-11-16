@@ -1,0 +1,52 @@
+{
+  "stops": [
+    {
+      "stop_id": "LIV1",
+      "official_name": "Livingston Plaza",
+      "nicknames": [
+        "the quads stop",
+        "Livi quads"
+      ],
+      "campus": "Livingston",
+      "landmarks_nearby": [
+        "Lucy Stone Hall",
+        "The Quads",
+        "Livingston Apartments"
+      ],
+      "routes_serving": [
+        "B",
+        "LX"
+      ],
+      "lat": null,
+      "lon": null
+    }
+  ],
+  "landmarks": [
+    {
+      "landmark_id": "lucy_stone_hall",
+      "name": "Lucy Stone Hall",
+      "aliases": [
+        "Lucy Stone"
+      ],
+      "near_stop_ids": [
+        "LIV1"
+      ],
+      "campus": "Livingston",
+      "description": "Academic building near the quads on Livingston campus."
+    },
+    {
+      "landmark_id": "the_quads",
+      "name": "The Quads",
+      "aliases": [
+        "Livi Quads",
+        "the quads"
+      ],
+      "near_stop_ids": [
+        "LIV1"
+      ],
+      "campus": "Livingston",
+      "description": "Livingston campus residence area close to Livingston Plaza stop."
+    }
+  ]
+}
+
