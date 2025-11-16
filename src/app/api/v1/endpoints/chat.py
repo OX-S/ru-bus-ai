@@ -1,8 +1,26 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import Union
+
+from src.app.schemas.chat_widgets import (
+    ActiveRoutesConfig,
+    BusArrivalsConfig,
+    ChatMessageConfig,
+    LLMWidgetConfig,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-@router.get("/chat", summary="Chat with the model")
-async def chat():
-    raise HTTPException(status_code=501, detail="Chat functionality not implemented yet.")
+class ChatRequest(BaseModel):
+    message: str
+
+
+@router.post(
+    "",
+    summary="Chat with the model router",
+    response_model=LLMWidgetConfig,
+)
+async def chat(req: ChatRequest) -> LLMWidgetConfig:
+    # TODO: LLM router.
+    return ChatMessageConfig(message="Chat backend not wired to LLM yet.")
