@@ -33,16 +33,3 @@ Retrieval-augmented Rutgers transit assistant that fuses GTFS-rt streams, static
    uvicorn src.app.main:app --reload
    cd ui/rutgers-bus-gpt && npm run dev
    ```
-
-## Repository map
-```
-.
-|- src/app                # FastAPI API/services/schemas
-|- src/tasks              # GTFS refresh + FAISS builders
-|- data/ru-bus-gtfsrt     # Redis + GTFS-rt worker
-|- data/semantic          # Curated overlays
-|- ui/rutgers-bus-gpt     # React widgets
-|- routes.faiss / routes_meta.json
-`- data/index/semantic.faiss / semantic_meta.json
-```
-
