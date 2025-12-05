@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     redis_key_prefix: str = "gtfsrt"
 
+    llm_api_base: str = "http://localhost:11434/v1"
+    llm_api_key: str = ""
+    llm_model: str = "llama3.1:8b-instruct-q4_K_M"
+
     vehicle_positions_staleness_s: int = 60
     trip_updates_staleness_s: int = 90
 

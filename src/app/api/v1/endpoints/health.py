@@ -12,7 +12,6 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 @router.get("/", summary="Liveness probe")
 def liveness() -> dict[str, str]:
-    # Process can answer HTTP.
     return {"status": "alive"}
 
 

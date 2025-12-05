@@ -1,13 +1,3 @@
-"""Schemas for semantic transit knowledge and FAISS documents.
-
-This module models the richer, non‑quantitative information you want the LLM
-to reason over (nicknames, landmarks, campus affiliation, etc.) and provides
-helpers to turn that into indexable documents plus structured metadata.
-
-Populate instances of these models elsewhere in the codebase or from a data
-source; this file is intentionally focused on structure and document shaping.
-"""
-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -16,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class SemanticIndexDocument(BaseModel):
-    """Single item to be embedded into a vector index (e.g. FAISS)."""
+    """Single item to be embedded into a vector index"""
 
     id: str
     text: str
@@ -24,14 +14,7 @@ class SemanticIndexDocument(BaseModel):
 
 
 class StopSemanticInfo(BaseModel):
-    """Canonical semantic model for a transit stop.
-
-    This is intentionally richer than the raw GTFS stop data so that the LLM
-    can answer questions like:
-    - "Which stop is closest to the quads?"
-    - "What campus is the quads stop on?"
-    - "Which buses can take me to Lucy Stone Hall?"
-    """
+    """Canonical semantic model for a transit stop"""
 
     stop_id: str
     official_name: str
@@ -39,22 +22,15 @@ class StopSemanticInfo(BaseModel):
     nicknames: List[str] = Field(default_factory=list)
     campus: Optional[str] = None
 
-    # Human landmarks and places a student might refer to.
     landmarks_nearby: List[str] = Field(default_factory=list)
 
-    # Route identifiers that regularly serve this stop.
     routes_serving: List[str] = Field(default_factory=list)
 
-    # Optional coordinates; useful if you later want geo‑aware logic.
     lat: Optional[float] = None
     lon: Optional[float] = None
 
     def to_index_document(self) -> SemanticIndexDocument:
-        """Render this stop into a single semantic document plus metadata.
-
-        The `text` is what you embed into FAISS. The `metadata` can be stored
-        alongside the vector so you can filter or hydrate structured answers.
-        """
+        """Renders given stop into a single semantic document plus metadata"""
         parts: List[str] = [
             f"Stop: {self.official_name} (stop_id={self.stop_id}).",
         ]
@@ -99,7 +75,7 @@ class StopSemanticInfo(BaseModel):
 
 
 class LandmarkSemanticInfo(BaseModel):
-    """Canonical semantic model for a landmark or place on/near campus."""
+    """Canonical semantic model for a landmark or place"""
 
     landmark_id: str
     name: str
@@ -107,14 +83,13 @@ class LandmarkSemanticInfo(BaseModel):
     # Other ways students might refer to this place.
     aliases: List[str] = Field(default_factory=list)
 
-    # Closest / most relevant stop identifiers for reaching this place.
+    # Closest stop identifiers for reaching this place.
     near_stop_ids: List[str] = Field(default_factory=list)
 
     campus: Optional[str] = None
     description: Optional[str] = None
 
     def to_index_document(self) -> SemanticIndexDocument:
-        """Render this landmark into a semantic document plus metadata."""
         parts: List[str] = [
             f"Landmark: {self.name}.",
         ]
@@ -127,7 +102,6 @@ class LandmarkSemanticInfo(BaseModel):
             parts.append(f"Also known as: {alias_str}.")
 
         if self.near_stop_ids:
-            # Exact stop names can be resolved later via your stop data.
             stops_str = ", ".join(self.near_stop_ids)
             parts.append(f"Closest stops: {stops_str}.")
 
@@ -152,13 +126,11 @@ class LandmarkSemanticInfo(BaseModel):
 
 
 def build_stop_documents(stops: List[StopSemanticInfo]) -> List[SemanticIndexDocument]:
-    """Convenience helper to map a list of stops into index documents."""
     return [stop.to_index_document() for stop in stops]
 
 
 def build_landmark_documents(
     landmarks: List[LandmarkSemanticInfo],
 ) -> List[SemanticIndexDocument]:
-    """Convenience helper to map landmarks into index documents."""
     return [landmark.to_index_document() for landmark in landmarks]
 
