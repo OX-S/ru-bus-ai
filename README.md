@@ -46,7 +46,3 @@ Retrieval-augmented Rutgers transit assistant that fuses GTFS-rt streams, static
 `- data/index/semantic.faiss / semantic_meta.json
 ```
 
-## Recruiter soundbites
-- Built ingestion -> embeddings -> LLM routing with measurable staleness/latency checks.
-- Added semantic overlays so embeddings reflect Rutgers slang and landmarks.
-- Delivered Redis-backed FastAPI + demo UI so the system can be evaluated in seconds.
